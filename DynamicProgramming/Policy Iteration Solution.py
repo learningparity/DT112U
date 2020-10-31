@@ -1,8 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[5]:
-
 
 import numpy as np
 import pprint
@@ -12,20 +10,17 @@ if "../" not in sys.path:
 from lib.envs.gridworld import GridworldEnv
 
 
-# In[6]:
-
 
 pp = pprint.PrettyPrinter(indent=2)
 env = GridworldEnv()
 
-
-# In[7]:
 
 
 # Taken from Policy Evaluation Exercise!
 def policy_eval(policy, env, discount_factor=1.0, theta=0.00001):
     """
     Evaluate a policy given an environment and a full description of the environment's dynamics.
+    This version has better convergence compared to the policy_eval_copy() function
     
     Args:
         policy: [S, A] shaped matrix representing the policy.
@@ -39,65 +34,105 @@ def policy_eval(policy, env, discount_factor=1.0, theta=0.00001):
     Returns:
         Vector of length env.nS representing the value function.
     """
-   
+    # Start with a random (all 0) value function
+    V = np.zeros(env.nS)
+    iter = 0
+    while True:
+        iter += 1
+        delta = 0
+        # For each state, perform a "full backup"
+        for s in range(env.nS):
+            v = 0
+            # Look at the possible next actions
+            for a, action_prob in enumerate(policy[s]):
+                # For each action, look at the possible next states...
+                for  prob, next_state, reward, done in env.P[s][a]:
+                    # Calculate the expected value
+                    v += action_prob * prob * (reward + discount_factor * V[next_state])
+            # How much our value function changed (across any states)
+            delta = max(delta, np.abs(v - V[s]))
+            V[s] = v
+        # if 1 == iter: print("V= ",V)
+        # Stop evaluating once our value function change is below a threshold
+        if delta < theta:
+            print("Number of iterations= ",iter)
+            break
+    return np.array(V)
+
+
+def policy_eval_copy(policy, env, discount_factor=1.0, theta=0.00001):
+    """
+    Evaluate a policy given an environment and a full description of the 
+    environment's dynamics. This version makes a copy of the V(Estimate of 
+    the value function) and calculates all v before updating V, as in the book.
+    The other version with stepwise updates of V outperforms in both computations
+    and in convergence.
+    
+    Args:
+        policy: [S, A] shaped matrix representing the policy.
+        env: OpenAI env. env.P represents the transition probabilities of the environment.
+            env.P[s][a] is a list of transition tuples (prob, next_state, reward, done).
+            env.nS is a number of states in the environment. 
+            env.nA is a number of actions in the environment.
+        theta: We stop evaluation once our value function change is less than theta for all states.
+        discount_factor: Gamma discount factor.
+    
+    Returns:
+        Vector of length env.nS representing the value function.
+    """
+    """
+    print("Policy (0=up, 1=right, 2=down, 3=left):")
+    print(policy)
+    print("")
+    """
     # V = Estimate of the value function
     # Initialize V arbitrarily, except that V (terminal) = 0
     # In this implementation we initialize V to zeros 
     V = np.zeros(env.nS)
     iter = 0
-    printouts = 0
-    print_factor = 1
+    #printouts = 0
+    #print_factor = 1
     while True:
         iter += 1
-        delta = 0
         # Loop over all states and perform an update
+        v = np.zeros(env.nS)
         for s in range(env.nS):
-            v = 0
-            # Look at the possible next actions
+            # Loop over all actions in each state
             for a, action_prob in enumerate(policy[s]):
-                # For each action available in each state
-                # look at the possible next states...
-                for  prob, next_state, reward, done in env.P[s][a]:
-                    # Calculate the expected value. Ref: Sutton Barto eq. 4.5.
-                    # Sum over all actions i each state    
-                    """
-                    To think about...
-                    How to handle the cases where you are done. For example, in the cliff walking environment, 
-                    if done = TRUE, do you add the values for the next_state?
-                    if done:
-                        print("-- -- -- -- -- -- -- -- -- -- --")
-                        print("Done:", done, "Current state:", s, "Next state:", next_state)
-                        print("action_prob:", action_prob, "prob:", prob, "Reward:", reward, "V[next_state]", V[next_state])
-                        print("-- -- -- -- -- -- -- -- -- -- --")
-                        v += action_prob * prob * reward
-                    else:
-                        v += action_prob * prob * (reward + discount_factor * V[next_state])
-                    """
-                    v += action_prob * prob * (reward + discount_factor * V[next_state])
-
+                [(prob, next_state, reward, done)] = env.P[s][a]
+                # Calculate the expected value. Ref: Sutton Barto eq. 4.5.
+                # Sum over all actions i each state    
+                if done:
+                    v[s] += action_prob * prob * reward
+                    #print("-- -- -- Done:", done, "Current state:", s, "Next state:", next_state)
+                    #print("action_prob:", action_prob, "prob:", prob, "Reward:", reward, "V[next_state]", V[next_state], "v[s]=", v[s] )
+                else:
+                    v[s] += action_prob * prob * (reward + discount_factor * V[next_state])
+                    #print("Normal case:","Current state:", s, "Next state:", next_state, "action_prob=", action_prob, "prob=", prob, "Reward=", reward, "V[next_state]=", V[next_state], "v[s]=", v[s] )
+        """
+        if 1 == iter :
+            print("V= ",V)
+            print("v= ",v)
+        """
+        delta = 0
+        for s in range(env.nS):
             # Calculate How much our value function changed (across any states)
-            delta = max(delta, abs(v - V[s]))
-            # Update the value function
-            V[s] = v
-            
-        # Some printing for debugging
-        if 0 == ((iter-1) % print_factor):
-            printouts += 1
-            print("Value Function:", iter, printouts, print_factor)
-            print(V)
-            if 0 == (printouts % 10):
-                print_factor *= 10
+            delta = max(delta, abs(v[s] - V[s]))
+
+        V = v
         
         # Stop evaluating once our value function change is below a threshold
         if delta < theta:
+            print("Number of iterations= ",iter)
             break
+        #else:
+        #    print("Delta= ",delta)
     return np.array(V)
 
 
-# In[ ]:
 
 
-def lookahead(env, state, V):
+def lookahead(env, state, V, discount_factor):
     """
     The greedy policy takes the action that looks best in the short term,
     after one step of lookahead—according to V.
@@ -108,14 +143,12 @@ def lookahead(env, state, V):
     Returns:
         A vector of length env.nA containing the expected value of each action.
     """
-    A = np.zeros(env.nA)
+    action_values = np.zeros(env.nA)
     for a in range(env.nA):
+        # [(prob, next_state, reward, done)] = env.P[state][a]
         for prob, next_state, reward, done in env.P[state][a]:
-            A[a] += prob * (reward + discount_factor * V[next_state])
-    return A
-
-
-# In[13]:
+            action_values[a] += prob * (reward + discount_factor * V[next_state])
+    return np.argmax(action_values)
 
 
 def policy_improvement(env, policy_eval_fn=policy_eval, discount_factor=1.0):
@@ -142,42 +175,49 @@ def policy_improvement(env, policy_eval_fn=policy_eval, discount_factor=1.0):
     while True:
         # Evaluate the current policy
         V = policy_eval_fn(policy, env, discount_factor)
-        # Init policy_stable = TRUE
-        policy_stable = TRUE
+        """
+        print("Reshaped Grid Value Function:")
+        print(V.reshape(env.shape))
+        print("")    
+        """
+        # Init policy_stable = True
+        policy_stable = True
         
         # This is the policy improvment part
         # Loop over all states and update/improve the policy
         for s in range(env.nS):
             # The best action we could take in the current state 
             # under the current policy. Ref: Sutton Barto eq. 4.9.
-            best_action = np.argmax(policy[s])
             
-            #replace one action
-            one step-look-ahead
+            # Retrive the index of the action with the highest probability (greedy)
+            current_action = np.argmax(policy[s]) 
             
-            # Look at the possible next actions
-            for a, action_prob in enumerate(policy[s]):            
-            
-            # Calculate How much our value function changed (across any states)
-            delta = max(delta, abs(v - V[s]))
-            
-            # Stop evaluating once our value function change is below a threshold
-        if 0 < delta:
-            policy_stable = FALSE
-            break   
-    return policy, np.zeros(env.nS)
+            # Retrive(greedy) the index of the action that provides the higest value (one-step-lookahed)
+            best_action = lookahead(env, s, V, discount_factor)   
+            """
+            if s in (3,7):
+                print("Paus: Breakpoint") 
+            if s in (4,5,8,9):
+                print("Current action:", current_action,", ", policy[s][current_action], "Best action:", best_action, ", ", policy[s][best_action]) 
+            """
+            if current_action != best_action:
+                policy_stable = False
+            """
+            for a, action_prob in enumerate(policy[s]):
+                if a == best_action:
+                    policy[s][a] = 1
+                else:
+                    policy[s][a] = 0
+            """
+            policy[s] = np.eye(env.nA)[best_action]
+        
+                
+        # If the policy is stable we've found an optimal policy. Return it
+        if policy_stable:
+            return policy, V
 
 
-# In[ ]:
-
-
-
-
-
-# In[14]:
-
-
-policy, v = policy_improvement(env)
+policy, v = policy_improvement(env,policy_eval_copy, 1)
 print("Policy Probability Distribution:")
 print(policy)
 print("")
@@ -195,15 +235,11 @@ print(v.reshape(env.shape))
 print("")
 
 
-# In[15]:
-
 
 # Test the value function
 expected_v = np.array([ 0, -1, -2, -3, -1, -2, -3, -2, -2, -3, -2, -1, -3, -2, -1,  0])
 np.testing.assert_array_almost_equal(v, expected_v, decimal=2)
 
-
-# In[ ]:
 
 
 
