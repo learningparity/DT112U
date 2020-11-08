@@ -1,17 +1,13 @@
 #!/usr/bin/env python
 # coding: utf-8
 import numpy as np
-#import pprint
-import sys
-if "../" not in sys.path:
-  sys.path.append("../") 
-
+import gym
+#import sys
+#if "../" not in sys.path:
+#  sys.path.append("../") 
 #from lib.envs.gridworld import GridworldEnv
-#env = GridworldEnv()
+import pprint
 
-from lib.envs.cliff_walking import CliffWalkingEnv
-env = CliffWalkingEnv()
-#pp = pprint.PrettyPrinter(indent=2)
 
 def lookahead(env, state, V, discount_factor):
     """
@@ -27,10 +23,9 @@ def lookahead(env, state, V, discount_factor):
     action_values = np.zeros(env.nA)
     for a in range(env.nA):
         for prob, next_state, reward, done in env.P[state][a]:
-            #action_values[a] += prob * (reward + discount_factor * V[next_state])
-            # How to deal with reaching terminal states?
-            # Is this correct?
             if done:
+                # How to deal with reaching terminal states?
+                # Is this correct?
                 action_values[a] += prob * reward
             else:
                 action_values[a] += prob * (reward + discount_factor * V[next_state])
@@ -65,15 +60,6 @@ def value_iteration(env, theta=0.0001, discount_factor=1.0):
         # For each state, perform a "full backup"
         for s in range(env.nS):
             v = V[s]
-            """
-            action_values = np.zeros(env.nA)
-            # Look at the possible next actions
-            for a in range(env.nA):
-                # For each action, look at the possible next states and
-                # calculate the expected value
-                for prob, next_state, reward, done in env.P[s][a]:
-                    action_values[a] += prob * (reward + discount_factor * V[next_state])
-            """
             action_values = lookahead(env, s, V, discount_factor)
             V[s] = max(action_values)
             delta = max(delta, np.abs(V[s] - v))
@@ -92,27 +78,46 @@ def value_iteration(env, theta=0.0001, discount_factor=1.0):
     
     return policy, V
 
+#env_name = 'CliffWalking-v0'
+env_name = 'FrozenLake-v0'
+
+pp = pprint.PrettyPrinter(indent=2)
 
 
-policy, v = value_iteration(env)
+if env_name == 'FrozenLake-v0':
+    #env = gym.make(env_name,map_name="4x4", is_slippery=False)
+    #env = gym.make(env_name,map_name="4x4", is_slippery=True)
+    #env = gym.make(env_name,map_name="8x8", is_slippery=False)
+    env = gym.make(env_name,map_name="8x8", is_slippery=True)
+    shape = (env.ncol,env.nrow)
+else:
+    env = gym.make(env_name)
+    #env = GridworldEnv()
+    shape = env.shape
+
+policy, v = value_iteration(env, discount_factor=0.99)
 
 
-print("Policy Probability Distribution:")
+print("Policy Probability Distribution:", env_name)
 print(policy)
 print("")
 
-print("Reshaped Grid Policy (0=up, 1=right, 2=down, 3=left):")
-print(np.reshape(np.argmax(policy, axis=1), env.shape))
+if env_name == 'FrozenLake-v0':
+    print("Reshaped Grid Policy (0=left, 1=down, 2=right, 3=up):")
+else:
+    print("Reshaped Grid Policy (0=up, 1=right, 2=down, 3=left):")
+print(np.reshape(np.argmax(policy, axis=1), shape))
+env.render()
 print("")
+
 
 print("Value Function:")
 print(v)
 print("")
 
 print("Reshaped Grid Value Function:")
-print(v.reshape(env.shape))
+print(v.reshape(shape))
 print("")
-
 
 
 
