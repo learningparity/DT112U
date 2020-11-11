@@ -30,7 +30,7 @@ def generate_episode(env, policy):
             break    
     return episode
 
-def update_V_AA(episode, V, returns_sum, returns_count, discount_factor=1.0):
+def update_V(episode, V, returns_sum, returns_count, discount_factor=1.0):
     """
     For each time step in the episode we carry out the first visit monte carlo method, 
     checking if this is the first index of this state. 
@@ -44,14 +44,7 @@ def update_V_AA(episode, V, returns_sum, returns_count, discount_factor=1.0):
     G = 0
     for state, action, reward in reversed(episode):
         # Sum up all rewards since the first occurance
-        if 0 < reward:
-            # got some reward
-            G = reward + discount_factor*G
-        else:    
-            # no reward
-            G = reward + discount_factor*G
-        
-        #G = reward + discount_factor*G
+        G = reward + discount_factor*G
         state_values.append((state, action, reward, G))
     
     state_values.reverse()
@@ -68,33 +61,11 @@ def update_V_AA(episode, V, returns_sum, returns_count, discount_factor=1.0):
             V[state] = returns_sum[state] / returns_count[state]
         #else:
             # Not a first visit - skip this state
-    
-def update_V_DB(episode, V, returns_sum, returns_count, discount_factor=1.0):
-    """
-    For each time step in the episode we carry out the first visit monte carlo method, 
-    checking if this is the first index of this state. 
-    Get the discounted reward and add it to the total reward for that 
-    state. Increment the times we have seen this state action pair 
-    and finally update the V values
-    """
-
-    # Find all states the we've visited in this episode
-    # We convert each state to a tuple so that we can use it as a dict key
-    states_in_episode = set([tuple(x[0]) for x in episode])
-    for state in states_in_episode:
-        # Find the first occurance of the state in the episode
-        first_occurence_idx = next(i for i,x in enumerate(episode) if x[0] == state)
-        # Sum up all rewards since the first occurance
-        G = sum([x[2]*(discount_factor**i) for i,x in enumerate(episode[first_occurence_idx:])])
-        # Calculate average return for this state over all sampled episodes
-        returns_sum[state] += G
-        returns_count[state] += 1.0
-        V[state] = returns_sum[state] / returns_count[state]
 
 
             
 
-def first_visit_mc_prediction(policy, env, num_episodes, discount_factor=1.0, update_V=update_V_AA ):
+def first_visit_mc_prediction(policy, env, num_episodes, discount_factor=1.0 ):
     """
     Monte Carlo prediction algorithm. Calculates the value function
     for a given policy using sampling.
@@ -122,22 +93,16 @@ def first_visit_mc_prediction(policy, env, num_episodes, discount_factor=1.0, up
     #first_occurence = dict()    
     
     for i_episode in range(1,num_episodes+1):        
-        # Generate an episode.
-        # An episode is an array of (state, action, reward) tuples
+        # Generate an episode, array of (state, action, reward) tuples
         episode = generate_episode(env, policy)
-
         # Calculate and store the return for each visit in the episode
         update_V(episode, V, returns_sum, returns_count, discount_factor=1.0)
-        
         # Print out which episode we're on, useful for debugging.
         if i_episode % 1000 == 0:
             print("\rEpisode {}/{}.".format(i_episode, num_episodes), end="")
             sys.stdout.flush()
-
     return V  
     
-        
-
 
 
 def basic_policy(observation):
@@ -145,7 +110,10 @@ def basic_policy(observation):
     A policy that sticks if the player score is > 18 and hits otherwise.
     """
     (score, dealer_score, usable_ace) = observation
-    return 0 if score >= 18 else 1
+    if usable_ace:
+        return 0 if score >= 16 else 1
+    else:
+        return 0 if score >= 14 else 1
 
 
 if __name__ == '__main__':
