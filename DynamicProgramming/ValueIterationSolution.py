@@ -5,7 +5,9 @@ import gym
 #import sys
 #if "../" not in sys.path:
 #  sys.path.append("../") 
-#from lib.envs.gridworld import GridworldEnv
+from PolicyIterationSolution import policy_improvement
+from PolicyIterationSolution import policy_eval_copy
+from PolicyIterationSolution import policy_eval
 import pprint
 
 
@@ -78,10 +80,11 @@ def value_iteration(env, theta=0.0001, discount_factor=1.0):
     
     return policy, V
 
+pp = pprint.PrettyPrinter(indent=2)
 #env_name = 'CliffWalking-v0'
 env_name = 'FrozenLake-v0'
+#env_name = 'Gridworld'
 
-pp = pprint.PrettyPrinter(indent=2)
 
 
 if env_name == 'FrozenLake-v0':
@@ -91,16 +94,25 @@ if env_name == 'FrozenLake-v0':
     env = gym.make(env_name,map_name="8x8", is_slippery=True)
     shape = (env.ncol,env.nrow)
 else:
-    env = gym.make(env_name)
-    #env = GridworldEnv()
+    if env_name == 'Gridworld':
+        from lib.envs.gridworld import GridworldEnv
+        env = GridworldEnv()
+    else:
+        env = gym.make(env_name)
     shape = env.shape
 
-policy, v = value_iteration(env, discount_factor=0.99)
+print("---- value_iteration(env, theta = 0.001, discount_factor=0.99) ----")
+policy, v = value_iteration(env, theta = 0.001, discount_factor=0.99)
+print("---- policy_improvement(env, policy_eval, theta = 0.001, discount_factor=0.99) ----")
+policy, v = policy_improvement(env, policy_eval, theta = 0.001, discount_factor=0.99)
+print("---- policy_improvement(env, policy_eval_copy, theta = 0.001, discount_factor=0.99) ----")
+policy, v = policy_improvement(env, policy_eval_copy, theta = 0.001, discount_factor=0.99)
 
-
+"""
 print("Policy Probability Distribution:", env_name)
 print(policy)
 print("")
+
 
 if env_name == 'FrozenLake-v0':
     print("Reshaped Grid Policy (0=left, 1=down, 2=right, 3=up):")
@@ -118,7 +130,7 @@ print("")
 print("Reshaped Grid Value Function:")
 print(v.reshape(shape))
 print("")
-
+"""
 
 
 # Test the value function

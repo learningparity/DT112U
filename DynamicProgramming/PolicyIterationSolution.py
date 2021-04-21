@@ -11,8 +11,7 @@ from lib.envs.gridworld import GridworldEnv
 
 
 
-pp = pprint.PrettyPrinter(indent=2)
-env = GridworldEnv()
+
 
 
 
@@ -46,9 +45,13 @@ def policy_eval(policy, env, discount_factor=1.0, theta=0.00001):
             # Look at the possible next actions
             for a, action_prob in enumerate(policy[s]):
                 # For each action, look at the possible next states...
-                for  prob, next_state, reward, done in env.P[s][a]:
+                for prob, next_state, reward, done in env.P[s][a]:
                     # Calculate the expected value
-                    v += action_prob * prob * (reward + discount_factor * V[next_state])
+                    if done:
+                        v += action_prob * prob * reward
+                    else:
+                        v += action_prob * prob * (reward + discount_factor * V[next_state])
+
             # How much our value function changed (across any states)
             delta = max(delta, np.abs(v - V[s]))
             V[s] = v
@@ -99,16 +102,13 @@ def policy_eval_copy(policy, env, discount_factor=1.0, theta=0.00001):
         for s in range(env.nS):
             # Loop over all actions in each state
             for a, action_prob in enumerate(policy[s]):
-                [(prob, next_state, reward, done)] = env.P[s][a]
-                # Calculate the expected value. Ref: Sutton Barto eq. 4.5.
-                # Sum over all actions i each state    
-                if done:
-                    v[s] += action_prob * prob * reward
-                    #print("-- -- -- Done:", done, "Current state:", s, "Next state:", next_state)
-                    #print("action_prob:", action_prob, "prob:", prob, "Reward:", reward, "V[next_state]", V[next_state], "v[s]=", v[s] )
-                else:
-                    v[s] += action_prob * prob * (reward + discount_factor * V[next_state])
-                    #print("Normal case:","Current state:", s, "Next state:", next_state, "action_prob=", action_prob, "prob=", prob, "Reward=", reward, "V[next_state]=", V[next_state], "v[s]=", v[s] )
+                for prob, next_state, reward, done in env.P[s][a]:
+                    # Calculate the expected value. Ref: Sutton Barto eq. 4.5.
+                    # Sum over all actions i each state    
+                    if done:
+                        v[s] += action_prob * prob * reward
+                    else:
+                        v[s] += action_prob * prob * (reward + discount_factor * V[next_state])
         """
         if 1 == iter :
             print("V= ",V)
@@ -118,7 +118,6 @@ def policy_eval_copy(policy, env, discount_factor=1.0, theta=0.00001):
         for s in range(env.nS):
             # Calculate How much our value function changed (across any states)
             delta = max(delta, abs(v[s] - V[s]))
-
         V = v
         
         # Stop evaluating once our value function change is below a threshold
@@ -147,11 +146,15 @@ def lookahead(env, state, V, discount_factor):
     for a in range(env.nA):
         # [(prob, next_state, reward, done)] = env.P[state][a]
         for prob, next_state, reward, done in env.P[state][a]:
-            action_values[a] += prob * (reward + discount_factor * V[next_state])
+            if done:
+                action_values[a] += prob * reward
+            else:
+                action_values[a] += prob * (reward + discount_factor * V[next_state])
+
     return np.argmax(action_values)
 
 
-def policy_improvement(env, policy_eval_fn=policy_eval, discount_factor=1.0):
+def policy_improvement(env, policy_eval_fn=policy_eval, theta=0.00001, discount_factor=1.0):
     """
     Policy Improvement Algorithm. Iteratively evaluates and improves a policy
     until an optimal policy is found.
@@ -174,7 +177,7 @@ def policy_improvement(env, policy_eval_fn=policy_eval, discount_factor=1.0):
     
     while True:
         # Evaluate the current policy
-        V = policy_eval_fn(policy, env, discount_factor)
+        V = policy_eval_fn(policy, env, discount_factor, theta)
         """
         print("Reshaped Grid Value Function:")
         print(V.reshape(env.shape))
@@ -215,8 +218,9 @@ def policy_improvement(env, policy_eval_fn=policy_eval, discount_factor=1.0):
         # If the policy is stable we've found an optimal policy. Return it
         if policy_stable:
             return policy, V
-
-
+"""
+pp = pprint.PrettyPrinter(indent=2)
+env = GridworldEnv()
 policy, v = policy_improvement(env,policy_eval_copy, 1)
 print("Policy Probability Distribution:")
 print(policy)
@@ -239,7 +243,7 @@ print("")
 # Test the value function
 expected_v = np.array([ 0, -1, -2, -3, -1, -2, -3, -2, -2, -3, -2, -1, -3, -2, -1,  0])
 np.testing.assert_array_almost_equal(v, expected_v, decimal=2)
-
+"""
 
 
 
