@@ -11,3 +11,6 @@ DynamicProgramming/.ipynb_checkpoints/Policy Evaluation Solution-checkpoint.ipyn
 DynamicProgramming/.ipynb_checkpoints/Policy Evaluation Solution-checkpoint.ipynb
 DynamicProgramming/.ipynb_checkpoints/Policy Evaluation Solution-checkpoint.ipynb
 >>>>>>> Andreas
+*.pyc
+MonteCarlo/Test12.ipynb
+MonteCarlo/MonteCarlo.zip
