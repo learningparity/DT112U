@@ -55,17 +55,25 @@ We'll also use the following from PyTorch:
 -  utilities for vision tasks (``torchvision`` - `a separate
    package <https://github.com/pytorch/vision>`__).
 
-"""
+AA - Modifications:
+1. Increased replay memory
+2. Added hidden layer
+3. Leaky_relu
+4. REPLAY_START_SIZE = 1000
 
+
+"""
+from datetime import datetime
 import gym
 import math
 import random
 import numpy as np
-import matplotlib
-import matplotlib.pyplot as plt
+#import matplotlib
+#import matplotlib.pyplot as plt
 from collections import namedtuple, deque
 from itertools import count
 from PIL import Image
+from torch.utils.tensorboard import SummaryWriter
 
 import torch
 import torch.nn as nn
@@ -77,11 +85,11 @@ import torchvision.transforms as T
 env = gym.make('CartPole-v0').unwrapped
 
 # set up matplotlib
-is_ipython = 'inline' in matplotlib.get_backend()
-if is_ipython:
-    from IPython import display
-
-plt.ion()
+# is_ipython = 'inline' in matplotlib.get_backend()
+# if is_ipython:
+#     from IPython import display
+#
+# plt.ion()
 
 # if gpu is to be used
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -127,6 +135,38 @@ class ReplayMemory(object):
     def __len__(self):
         return len(self.memory)
 
+"""
+class AAMemory:
+    def __init__(self, capacity):
+        self.capacity = capacity
+        self.memory = []
+        self.batch = []    
+
+    def push(self, transition):
+        self.memory.append(transition)
+        if len(self.memory) > self.capacity:
+            del self.memory[0]
+
+    def batch_push(self, *args):
+        self.batch.append(Transition(*args))
+    
+    def batch_extend(self):
+        self.memory.extend(self.batch)
+        self.batch.clear()
+
+    def batch_clear(self):
+        self.batch.clear()
+
+    def sort(self, b_size):
+        self.memory.sort(key = lambda i: i.reward)
+    
+    def sample(self, batch_size):
+        return random.sample(self.memory, batch_size)
+    
+    def __len__(self):
+        return len(self.memory)
+"""
+    
 
 ######################################################################
 # Now, let's define our model. But first, let's quickly recap what a DQN is.
@@ -218,16 +258,23 @@ class DQN(nn.Module):
             return (size - (kernel_size - 1) - 1) // stride  + 1
         convw = conv2d_size_out(conv2d_size_out(conv2d_size_out(w)))
         convh = conv2d_size_out(conv2d_size_out(conv2d_size_out(h)))
-        linear_input_size = convw * convh * 32
-        self.head = nn.Linear(linear_input_size, outputs)
+        self.linear_input_size = convw * convh * 32
+        #self.head = nn.Linear(linear_input_size, outputs)
+        # AA - added hidden layer
+        self.l1 = nn.Linear(self.linear_input_size, 32)
+        self.l2 = nn.Linear(32, outputs)
 
     # Called with either one element to determine next action, or a batch
     # during optimization. Returns tensor([[left0exp,right0exp]...]).
     def forward(self, x):
-        x = F.relu(self.bn1(self.conv1(x)))
-        x = F.relu(self.bn2(self.conv2(x)))
-        x = F.relu(self.bn3(self.conv3(x)))
-        return self.head(x.view(x.size(0), -1))
+        x = F.leaky_relu(self.bn1(self.conv1(x)))
+        x = F.leaky_relu(self.bn2(self.conv2(x)))
+        x = F.leaky_relu(self.bn3(self.conv3(x)))
+        # AA - added hidden layer
+        x = F.leaky_relu(self.l1(x.view(x.size(0), -1)))
+        x = self.l2(x)
+        # self.head(x.view(x.size(0), -1))
+        return x
 
 
 ######################################################################
@@ -279,11 +326,11 @@ def get_screen():
 
 
 env.reset()
-plt.figure()
-plt.imshow(get_screen().cpu().squeeze(0).permute(1, 2, 0).numpy(),
-           interpolation='none')
-plt.title('Example extracted screen')
-plt.show()
+# plt.figure()
+# plt.imshow(get_screen().cpu().squeeze(0).permute(1, 2, 0).numpy(),
+#            interpolation='none')
+# plt.title('Example extracted screen')
+# plt.show()
 
 
 ######################################################################
@@ -308,12 +355,14 @@ plt.show()
 #    episode.
 #
 
-BATCH_SIZE = 128
-GAMMA = 0.999
-EPS_START = 0.9
-EPS_END = 0.05
-EPS_DECAY = 200
-TARGET_UPDATE = 10
+BATCH_SIZE = 10 #32
+REPLAY_START_SIZE = 1000
+GAMMA = 0.8 # AA 
+EPS_START = 1.0 # AA 0.9
+EPS_END = 0.001
+EPS_DECAY = 500
+TARGET_UPDATE = 50
+LR = 0.0005  # AA optimizer learning rate
 
 # Get screen size so that we can initialize layers correctly based on shape
 # returned from AI gym. Typical dimensions at this point are close to 3x40x90
@@ -329,9 +378,12 @@ target_net = DQN(screen_height, screen_width, n_actions).to(device)
 target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
 
-optimizer = optim.RMSprop(policy_net.parameters())
-memory = ReplayMemory(10000)
-
+# optimizer = optim.RMSprop(policy_net.parameters())
+optimizer = optim.Adam(policy_net.parameters(), LR) # AA - Changed optimizer
+#memory = ReplayMemory(10000)
+memory = ReplayMemory(100000) # AA - Increased replay memory
+# AA ToDo 
+# memory = AAMemory(10000)
 
 steps_done = 0
 
@@ -353,7 +405,7 @@ def select_action(state):
 
 
 episode_durations = []
-
+writer = SummaryWriter()
 
 def plot_durations():
     plt.figure(2)
@@ -394,7 +446,8 @@ def plot_durations():
 #
 
 def optimize_model():
-    if len(memory) < BATCH_SIZE:
+    # if len(memory) < BATCH_SIZE:
+    if len(memory) < REPLAY_START_SIZE:
         return
     transitions = memory.sample(BATCH_SIZE)
     # Transpose the batch (see https://stackoverflow.com/a/19343/3343043 for
@@ -436,6 +489,8 @@ def optimize_model():
     for param in policy_net.parameters():
         param.grad.data.clamp_(-1, 1)
     optimizer.step()
+    # AA - Added return off loss for printing
+    return loss
 
 
 ######################################################################
@@ -451,8 +506,9 @@ def optimize_model():
 # duration improvements.
 #
 
-num_episodes = 500
-for i_episode in range(num_episodes):
+EPISODES = 500
+t_max = 0
+for i_episode in range(EPISODES):
     # Initialize the environment and state
     env.reset()
     last_screen = get_screen()
@@ -462,6 +518,10 @@ for i_episode in range(num_episodes):
         # Select and perform an action
         action = select_action(state)
         _, reward, done, _ = env.step(action.item())
+        if reward < 1:
+            print(reward)
+        elif done and (t < 200):
+            reward = 0
         reward = torch.tensor([reward], device=device)
 
         # Observe new state
@@ -469,7 +529,22 @@ for i_episode in range(num_episodes):
         current_screen = get_screen()
         if not done:
             next_state = current_screen - last_screen
+            # Store the transition in memory
+            # AA - Moved here in order to skip all the done states i the optimization
+            # memory.batch_push(state, action, next_state, reward)
         else:
+            """
+            if 50 > i_episode:
+                # Initially - Use all observations
+                memory.batch_extend()
+            elif (t > t_max/2):
+                # Only add "good" episodes
+                memory.batch_extend()
+                if (t > t_max): t_max = t
+            else:
+                # Ignore poor episodes
+                memory.batch_clear()
+            """
             next_state = None
 
         # Store the transition in memory
@@ -479,20 +554,27 @@ for i_episode in range(num_episodes):
         state = next_state
 
         # Perform one step of the optimization (on the policy network)
-        optimize_model()
+        loss = optimize_model()
         if done:
-            episode_durations.append(t + 1)
-            plot_durations()
+            print("{2} Episode {0} finished after {1} steps"
+                  .format(i_episode, t, '\033[92m' if t >= 195 else '\033[99m'))
+            writer.add_scalar("Steps until finish:", t, i_episode)
+            # writer.add_scalar("ReplayMemory:", len(memory), i_episode)
+            if loss is not None:
+                writer.add_scalar("Loss:", loss.item(), i_episode)
             break
     # Update the target network, copying all weights and biases in DQN
     if i_episode % TARGET_UPDATE == 0:
         target_net.load_state_dict(policy_net.state_dict())
 
 print('Complete')
+writer.flush()
+print('Run(Anaconda prompt): tensorboard --logdir=runs')
+print('Go to the URL it provides OR to http://localhost:6006/')
 env.render()
 env.close()
-plt.ioff()
-plt.show()
+#plt.ioff()
+#plt.show()
 
 ######################################################################
 # Here is the diagram that illustrates the overall resulting data flow.
