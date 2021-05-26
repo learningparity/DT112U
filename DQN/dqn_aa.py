@@ -261,8 +261,8 @@ class DQN(nn.Module):
         self.linear_input_size = convw * convh * 32
         #self.head = nn.Linear(linear_input_size, outputs)
         # AA - added hidden layer
-        self.l1 = nn.Linear(self.linear_input_size, 32)
-        self.l2 = nn.Linear(32, outputs)
+        self.l1 = nn.Linear(self.linear_input_size, 16)
+        self.l2 = nn.Linear(16, outputs)
 
     # Called with either one element to determine next action, or a batch
     # during optimization. Returns tensor([[left0exp,right0exp]...]).
