@@ -11,7 +11,7 @@ import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 
 # hyper parameters
-EPISODES = 500  # number of episodes
+EPISODES = 200  # number of episodes
 BATCH_SIZE = 32  # Q-learning batch size
 REPLAY_START_SIZE = 100
 GAMMA = 0.9  # Q-learning discount factor
