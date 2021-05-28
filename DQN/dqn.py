@@ -1,3 +1,4 @@
+from datetime import datetime
 import gym
 from gym import wrappers
 import random
@@ -6,18 +7,29 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-import matplotlib.pyplot as plt
+
 from torch.utils.tensorboard import SummaryWriter
 
 # hyper parameters
-EPISODES = 600  # number of episodes
+EPISODES = 500  # number of episodes
+BATCH_SIZE = 32  # Q-learning batch size
+REPLAY_START_SIZE = 100
+GAMMA = 0.9  # Q-learning discount factor
 EPS_START = 0.9  # e-greedy threshold start value
 EPS_END = 0.01  # e-greedy threshold end value
 EPS_DECAY = 200  # e-greedy threshold decay
-GAMMA = 0.80  # Q-learning discount factor
+TARGET_UPDATE = 10
 LR = 0.0005  # NN optimizer learning rate
-HIDDEN_LAYER = 64  # NN hidden layer size
-BATCH_SIZE = 10  # Q-learning batch size
+HIDDEN_LAYER = 32  # NN hidden layer size
+
+C_TRANS = 0.01
+THRESHOLD_CART_POS_TARGET = 0.05
+THRESHOLD_POLE_ANGLE_TARGET = 0.05
+BOUNDARY_CART_POS = 2.4
+BOUNDARY_CART_VELOCITY = 1
+BOUNDARY_POLE_ANGLE = 0.2
+BOUNDARY_ANGLE_RATE = 3.5
+        
 
 # if gpu is to be used
 use_cuda = torch.cuda.is_available()
@@ -70,6 +82,10 @@ steps_done = 0
 episode_durations = []
 
 writer = SummaryWriter()
+run_time = datetime.now().strftime("%y%m%d_%H%M_")
+run_name = 'dqn.py_AdamLR=0.001_' + run_time
+#writer = SummaryWriter('DQN/runs', comment=run_name)
+#writer.add_custom_scalars_multilinechart(['loss/train', 'loss/test'], title='losses')
 
 def select_action(state):
     global steps_done
@@ -77,50 +93,12 @@ def select_action(state):
     eps_threshold = EPS_END + (EPS_START - EPS_END) * math.exp(-1. * steps_done / EPS_DECAY)
     steps_done += 1
     if sample > eps_threshold:
-        #return model(Variable(state, volatile=True).type(FloatTensor)).data.max(1)[1].view(1, 1)
         return model(state).data.max(1)[1].view(1, 1)
     else:
         return LongTensor([[random.randrange(2)]])
 
-
-def run_episode(e, environment):
-    state = environment.reset()
-    steps = 0
-    while True:
-        steps += 1
-        environment.render()
-        action = select_action(FloatTensor([state]))
-        #print(action)
-        #print('Action: ',action.item())
-        next_state, reward, done, _ = environment.step(action.item())
-        #print(done,(steps < 200))# zero reward when attempt ends
-        #print('Get Reward:', done and (steps < 200))
-        # zero reward when attempt ends
-        if done and (steps < 200):
-            reward = 0
-
-        # Store the transition in memory
-        memory.push((FloatTensor([state]),
-                     action,  # action is already a tensor
-                     FloatTensor([next_state]),
-                     FloatTensor([reward])))
-
-        
-        #learn()
-        loss = optimize_model()
-        
-        # Move to the next state
-        state = next_state
-
-        if done:
-            print("{2} Episode {0} finished after {1} steps"
-                  .format(e, steps, '\033[92m' if steps >= 195 else '\033[99m'))
-            writer.add_scalar("Steps until finish:", steps, e)
-            writer.add_scalar("Loss:", loss, e)
-            episode_durations.append(steps)
-            #plot_durations()
-            break
-
+def greedy_action(state):
+    return model(state).data.max(1)[1].view(1, 1)
 
 
 ######################################################################
@@ -142,9 +120,9 @@ def run_episode(e, environment):
 
 def optimize_model():
 #def learn():
-    if len(memory) < BATCH_SIZE:
+    #if len(memory) < BATCH_SIZE:
+    if len(memory) < REPLAY_START_SIZE:
         return
-
     # random transition batch is taken from experience replay memory
     transitions = memory.sample(BATCH_SIZE)
     batch_state, batch_action, batch_next_state, batch_reward = zip(*transitions)
@@ -170,21 +148,70 @@ def optimize_model():
     optimizer.step()
     return loss
 
-def plot_durations():
-    plt.figure(2)
-    plt.clf()
-    durations_t = torch.FloatTensor(episode_durations)
-    plt.title('Training...')
-    plt.xlabel('Episode')
-    plt.ylabel('Duration')
-    plt.plot(durations_t.numpy())
-    # take 100 episode averages and plot them too
-    if len(durations_t) >= 100:
-        means = durations_t.unfold(0, 100, 1).mean(1).view(-1)
-        means = torch.cat((torch.zeros(99), means))
-        plt.plot(means.numpy())
+def run_episode(e, environment):
+    global successful_runs
+    if e == 0: successful_runs = 0
+    state = environment.reset()
+    steps = 0
+    while True:
+        steps += 1
+        environment.render()
+        if 9 < successful_runs:
+            action = greedy_action(FloatTensor([state]))
+        else: 
+            action = select_action(FloatTensor([state]))
+        next_state, reward, done, _ = environment.step(action.item())
+        
+        cart_pos = next_state[0]         # [-2.4, 2.4]
+        cart_velocity = next_state[1]    # [-1, 1]
+        pole_angle = next_state[2]       # [-0.2, 0.2]
+        angle_rate = next_state[3]       # [-3.5, 3.5]
+        if (abs(cart_pos) > BOUNDARY_CART_POS) or \
+            (abs(pole_angle) > BOUNDARY_POLE_ANGLE) or \
+            (abs(cart_velocity) > BOUNDARY_CART_VELOCITY) or \
+            (abs(angle_rate) > BOUNDARY_ANGLE_RATE):
+            reward = -1  # S-
+        elif abs(cart_pos) < THRESHOLD_CART_POS_TARGET and abs(pole_angle) < THRESHOLD_POLE_ANGLE_TARGET:
+            if done:
+                reward = 1  # S+
+            else:
+                reward = 0  # S+
+        else:
+            reward = -C_TRANS
+        if done and (200 <= steps):
+            successful_runs += 1
+            if successful_runs == 10:
+                print("---- 10 succesful runs ----")
 
-    plt.pause(0.001)  # pause a bit so that plots are updated
+
+        # zero reward when attempt ends
+        #if done and (steps < 200):
+        #    reward = 0
+
+        # Store the transition in memory
+        memory.push((FloatTensor([state]),
+                     action,  # action is already a tensor
+                     FloatTensor([next_state]),
+                     FloatTensor([reward])))
+
+        
+        #learn()
+        loss = optimize_model()
+        
+        # Move to the next state
+        state = next_state
+
+        if done:
+            print("{2} Episode {0} finished after {1} steps"
+                  .format(e, steps, '\033[92m' if steps >= 195 else '\033[99m'))
+            writer.add_scalar("Steps until finish:", steps, e)
+            if loss is not None:
+                writer.add_scalar("Loss:", loss, e)
+            episode_durations.append(steps)
+            #plot_durations()
+            break
+
+
 
 
 for e in range(EPISODES):
@@ -195,7 +222,5 @@ print('Complete')
 writer.flush()
 print('Run(Anaconda prompt): tensorboard --logdir=runs')
 print('Go to the URL it provides OR to http://localhost:6006/')
-env.render(close=True)
+env.render()
 env.close()
-plt.ioff()
-plt.show()
