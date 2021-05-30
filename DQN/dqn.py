@@ -20,7 +20,7 @@ EPS_END = 0.01  # e-greedy threshold end value
 EPS_DECAY = 200  # e-greedy threshold decay
 TARGET_UPDATE = 10
 LR = 0.0005  # NN optimizer learning rate
-HIDDEN_LAYER = 32  # NN hidden layer size
+HIDDEN_LAYER = 16  # NN hidden layer size
 
 C_TRANS = 0.01
 THRESHOLD_CART_POS_TARGET = 0.05
@@ -61,8 +61,8 @@ class Network(nn.Module):
     def __init__(self):
         nn.Module.__init__(self)
         self.l1 = nn.Linear(4, HIDDEN_LAYER)
-        self.l2 = nn.Linear(HIDDEN_LAYER, 16)
-        self.l3 = nn.Linear(16, 2)
+        self.l2 = nn.Linear(HIDDEN_LAYER, HIDDEN_LAYER)
+        self.l3 = nn.Linear(HIDDEN_LAYER, 2)
 
     def forward(self, x):
         x = F.relu(self.l1(x))
@@ -142,6 +142,7 @@ def optimize_model():
 
     # loss is measured from error between current and newly expected Q values
     loss = F.smooth_l1_loss(current_q_values, expected_q_values.unsqueeze(1))
+    #loss = F.mse_loss(current_q_values, expected_q_values.unsqueeze(1))
     # backpropagation of loss to NN
     optimizer.zero_grad()
     loss.backward()
